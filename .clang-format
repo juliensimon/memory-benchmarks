@@ -1,0 +1,22 @@
+# Clang-format configuration for memory-benchmarks
+# Based on Google style with customizations
+
+BasedOnStyle: Google
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+IndentCaseLabels: true
+SpaceBeforeParens: Never
+BreakBeforeBraces: Attach
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+SpaceAfterCStyleCast: true
+SpaceBeforeAssignmentOperators: true
+BreakConstructorInitializersBeforeComma: false
+BreakConstructorInitializers: BeforeColon
+AccessModifierOffset: -2
+NamespaceIndentation: None

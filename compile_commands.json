@@ -1,0 +1,97 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/g++",
+      "-std=c++17",
+      "-O3",
+      "-march=native",
+      "-mtune=native",
+      "-pthread",
+      "-Wall",
+      "-Wextra",
+      "-c",
+      "-o",
+      "memory_bandwidth.o",
+      "memory_bandwidth.cpp"
+    ],
+    "directory": "/Users/julien/Development/repos/memory-benchmarks",
+    "file": "/Users/julien/Development/repos/memory-benchmarks/memory_bandwidth.cpp",
+    "output": "/Users/julien/Development/repos/memory-benchmarks/memory_bandwidth.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/g++",
+      "-std=c++17",
+      "-O3",
+      "-march=native",
+      "-mtune=native",
+      "-pthread",
+      "-Wall",
+      "-Wextra",
+      "-c",
+      "-o",
+      "memory_specs.o",
+      "memory_specs.cpp"
+    ],
+    "directory": "/Users/julien/Development/repos/memory-benchmarks",
+    "file": "/Users/julien/Development/repos/memory-benchmarks/memory_specs.cpp",
+    "output": "/Users/julien/Development/repos/memory-benchmarks/memory_specs.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/g++",
+      "-std=c++17",
+      "-O3",
+      "-march=native",
+      "-mtune=native",
+      "-pthread",
+      "-Wall",
+      "-Wextra",
+      "-c",
+      "-o",
+      "test_patterns.o",
+      "test_patterns.cpp"
+    ],
+    "directory": "/Users/julien/Development/repos/memory-benchmarks",
+    "file": "/Users/julien/Development/repos/memory-benchmarks/test_patterns.cpp",
+    "output": "/Users/julien/Development/repos/memory-benchmarks/test_patterns.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/g++",
+      "-std=c++17",
+      "-O3",
+      "-march=native",
+      "-mtune=native",
+      "-pthread",
+      "-Wall",
+      "-Wextra",
+      "-c",
+      "-o",
+      "standard_tests.o",
+      "standard_tests.cpp"
+    ],
+    "directory": "/Users/julien/Development/repos/memory-benchmarks",
+    "file": "/Users/julien/Development/repos/memory-benchmarks/standard_tests.cpp",
+    "output": "/Users/julien/Development/repos/memory-benchmarks/standard_tests.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/g++",
+      "-std=c++17",
+      "-O3",
+      "-march=native",
+      "-mtune=native",
+      "-pthread",
+      "-Wall",
+      "-Wextra",
+      "-c",
+      "-o",
+      "output_formatter.o",
+      "output_formatter.cpp"
+    ],
+    "directory": "/Users/julien/Development/repos/memory-benchmarks",
+    "file": "/Users/julien/Development/repos/memory-benchmarks/output_formatter.cpp",
+    "output": "/Users/julien/Development/repos/memory-benchmarks/output_formatter.o"
+  }
+]
