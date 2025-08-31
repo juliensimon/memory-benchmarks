@@ -1,13 +1,13 @@
 # Memory Bandwidth Test Tool
 
 [![C++](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://isocpp.org/std/the-standard)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey.svg)](https://github.com/yourusername/memory-benchmarks)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey.svg)](#multi-platform-support)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/yourusername/memory-benchmarks)
-[![Architecture](https://img.shields.io/badge/architecture-x86__64%20%7C%20ARM64-orange.svg)](https://github.com/yourusername/memory-benchmarks)
-[![Memory](https://img.shields.io/badge/memory-DDR3%20%7C%20DDR4%20%7C%20DDR5%20%7C%20LPDDR4%20%7C%20LPDDR5-purple.svg)](https://github.com/yourusername/memory-benchmarks)
-[![Threading](https://img.shields.io/badge/threading-Multithreaded-red.svg)](https://github.com/yourusername/memory-benchmarks)
-[![Cache](https://img.shields.io/badge/cache-L1%20%7C%20L2%20%7C%20L3-yellow.svg)](https://github.com/yourusername/memory-benchmarks)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](#installation)
+[![Architecture](https://img.shields.io/badge/architecture-x86__64%20%7C%20ARM64-orange.svg)](#multi-platform-support)
+[![Memory](https://img.shields.io/badge/memory-DDR3%20%7C%20DDR4%20%7C%20DDR5%20%7C%20LPDDR4%20%7C%20LPDDR5-purple.svg)](#hardware-detection-capabilities)
+[![Threading](https://img.shields.io/badge/threading-Multithreaded-red.svg)](#threading)
+[![Cache](https://img.shields.io/badge/cache-L1%20%7C%20L2%20%7C%20L3-yellow.svg)](#cache-information)
 
 A standalone multithreaded C++ program to measure memory bandwidth between the host CPU and RAM.
 This tool provides comprehensive memory performance analysis with various access patterns.
@@ -166,15 +166,36 @@ Run with default settings (1GB buffer, 10 iterations, auto-detect threads):
 
 ### Makefile Targets
 
-- `make` - Compile the program
-- `make run` - Run with default settings
-- `make run-small` - Run with small memory footprint
-- `make run-large` - Run with large memory footprint
+#### Build Targets
+- `make` / `make all` - Compile the program
+- `make debug` - Build with debug symbols
+- `make release` - Build optimized release version
 - `make clean` - Remove compiled binary
+- `make clean-all` - Clean everything including tests
+
+#### Run Targets
+- `make run` - Run with default settings
+- `make run-cache` - Run cache hierarchy tests
+- `make run-matrix` - Run matrix multiplication benchmark
+- `make run-matrix-small` - Run small matrix benchmark (512x512)
+- `make run-matrix-large` - Run large matrix benchmark (2048x2048)
+
+#### macOS-specific Targets (when on macOS)
+- `make run-p-cores` - Run tests on P-cores only
+- `make run-e-cores` - Run tests on E-cores only
+- `make run-matrix-amx` - Run matrix tests with Apple AMX acceleration
+
+#### Test Targets
+- `make tests` - Build all test executables
+- `make test` - Build and run all tests
+- `make test-performance` - Run performance regression tests
+- `make clean-tests` - Clean test artifacts
+
+#### Utility Targets
 - `make help` - Show program help
-- `make install-precommit` - Install pre-commit hooks
-- `make lint` - Run pre-commit checks manually
+- `make info` - Show build information
 - `make format` - Format C++ code with clang-format
+- `make install-deps` - Install build dependencies
 
 ## Output Format
 

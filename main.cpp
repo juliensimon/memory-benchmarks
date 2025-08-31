@@ -6,11 +6,12 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <map>
+#include <memory>
 #include <random>
 #include <sstream>
 #include <thread>
 #include <vector>
-#include <memory>
 
 // Common includes
 #include "common/memory_types.h"
@@ -85,8 +86,7 @@ public:
         cleanup_buffers();
     }
 
-    bool allocate_buffers(size_t total_size, size_t num_buffers, bool silent = false) {
-        (void)silent;
+    bool allocate_buffers(size_t total_size, size_t num_buffers) {
         if(total_size == 0 || num_buffers == 0) {
             throw MemoryError("Invalid buffer allocation parameters: total_size=" + 
                             std::to_string(total_size) + ", num_buffers=" + std::to_string(num_buffers));
@@ -263,6 +263,18 @@ public:
     }
 
 private:
+    /**
+     * @brief Aggregates performance statistics from multiple threads
+     * 
+     * Combines thread-level performance statistics into a single aggregate result.
+     * Calculates total bytes processed across all threads and computes aggregate
+     * bandwidth based on total time. Latency is calculated based on cache line
+     * accesses and total execution time.
+     * 
+     * @param thread_results Vector of performance statistics from individual threads
+     * @param total_time Total execution time in seconds for the entire test
+     * @return Aggregated performance statistics with combined metrics
+     */
     PerformanceStats aggregate_stats(const std::vector<PerformanceStats>& thread_results, double total_time) {
         PerformanceStats aggregated{};
         aggregated.time_seconds = total_time;
@@ -276,7 +288,7 @@ private:
         }
 
         if(aggregated.bytes_processed > 0) {
-            size_t cache_line_size = 64;
+            size_t cache_line_size = CacheConstants::DEFAULT_CACHE_LINE_SIZE;
             size_t accesses = aggregated.bytes_processed / cache_line_size;
             if(accesses > 0) {
                 aggregated.latency_ns = (total_time * 1e9) / accesses;
@@ -300,16 +312,21 @@ std::vector<TestPattern> parse_patterns(const std::string& pattern_str) {
                     TestPattern::RANDOM_READ, TestPattern::RANDOM_WRITE,
                     TestPattern::COPY, TestPattern::TRIAD, TestPattern::MATRIX_MULTIPLY};
     } else {
-        if(pattern_str == "sequential_read") patterns.push_back(TestPattern::SEQUENTIAL_READ);
-        else if(pattern_str == "sequential_write") patterns.push_back(TestPattern::SEQUENTIAL_WRITE);
-        else if(pattern_str == "random_read") patterns.push_back(TestPattern::RANDOM_READ);
-        else if(pattern_str == "random_write") patterns.push_back(TestPattern::RANDOM_WRITE);
-        else if(pattern_str == "copy") patterns.push_back(TestPattern::COPY);
-        else if(pattern_str == "triad") patterns.push_back(TestPattern::TRIAD);
-        else if(pattern_str == "matrix_multiply") patterns.push_back(TestPattern::MATRIX_MULTIPLY);
-        else {
-            std::cerr << "Error: Unknown pattern '" << pattern_str << "'" << std::endl;
-            exit(1);
+        static const std::map<std::string, TestPattern> pattern_map = {
+            {"sequential_read", TestPattern::SEQUENTIAL_READ},
+            {"sequential_write", TestPattern::SEQUENTIAL_WRITE},
+            {"random_read", TestPattern::RANDOM_READ},
+            {"random_write", TestPattern::RANDOM_WRITE},
+            {"copy", TestPattern::COPY},
+            {"triad", TestPattern::TRIAD},
+            {"matrix_multiply", TestPattern::MATRIX_MULTIPLY}
+        };
+        
+        auto it = pattern_map.find(pattern_str);
+        if (it != pattern_map.end()) {
+            patterns.push_back(it->second);
+        } else {
+            throw ArgumentError("Unknown pattern '" + pattern_str + "'");
         }
     }
     return patterns;
