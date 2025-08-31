@@ -1,25 +1,118 @@
-# Memory Bandwidth Test Tool Makefile - Refactored Structure
+# Memory Bandwidth Test Tool Makefile - Enhanced Optimization Structure
 #
-# This Makefile builds the memory benchmark tool with platform-specific implementations
+# This Makefile builds the memory benchmark tool with comprehensive optimization support
+# Supports debug, release, and performance (PGO) build configurations
 
-# Compiler and flags
-CXX = g++
-CXXFLAGS = -std=c++17 -O3 -march=native -mtune=native -pthread -Wall -Wextra
-LDFLAGS = -pthread
+# Compiler selection with version detection
+CXX := $(shell which g++-12 2>/dev/null || which g++-11 2>/dev/null || which g++ 2>/dev/null)
+CC := $(shell which gcc-12 2>/dev/null || which gcc-11 2>/dev/null || which gcc 2>/dev/null)
+
+# Build type detection
+BUILD_TYPE ?= release
+DEBUG ?= 0
+
+# Base flags
+BASE_CXXFLAGS = -std=c++17 -pthread -Wall -Wextra -Wpedantic
+
+# Debug build optimizations
+DEBUG_CXXFLAGS = $(BASE_CXXFLAGS) \
+	-g3 -O0 \
+	-DDEBUG \
+	-fsanitize=address \
+	-fsanitize=undefined \
+	-fno-omit-frame-pointer \
+	-fstack-protector-strong
+
+# Release build optimizations
+RELEASE_CXXFLAGS = $(BASE_CXXFLAGS) \
+	-O3 -DNDEBUG \
+	-march=native -mtune=native \
+	-flto=auto \
+	-ffast-math \
+	-funroll-loops \
+	-finline-functions \
+	-fomit-frame-pointer \
+	-fno-stack-protector
+
+# Performance build optimizations (for benchmarking with PGO)
+# Different PGO flags for GCC vs Clang
+ifeq ($(findstring clang,$(CXX)),clang)
+    # Clang PGO flags
+    PERFORMANCE_CXXFLAGS = $(RELEASE_CXXFLAGS) \
+	    -fprofile-instr-generate
+    PGO_USE_FLAGS = -fprofile-instr-use=default.profdata
+else
+    # GCC PGO flags
+    PERFORMANCE_CXXFLAGS = $(RELEASE_CXXFLAGS) \
+	    -fprofile-generate
+    PGO_USE_FLAGS = -fprofile-use -fprofile-correction
+endif
+
+# Link-time optimizations (base)
+RELEASE_LDFLAGS_BASE = -flto=auto
+DEBUG_LDFLAGS = -fsanitize=address -fsanitize=undefined
+
+# Platform-specific release linker flags
+ifeq ($(shell uname),Darwin)
+    # macOS linker flags
+    RELEASE_LDFLAGS = $(RELEASE_LDFLAGS_BASE) -Wl,-dead_strip
+else
+    # Linux linker flags  
+    RELEASE_LDFLAGS = $(RELEASE_LDFLAGS_BASE) -Wl,--gc-sections -s -Wl,--strip-all
+endif
+
+# Base linker flags
+BASE_LDFLAGS = -pthread
+
+# Build type selection
+ifeq ($(BUILD_TYPE),debug)
+    CXXFLAGS = $(DEBUG_CXXFLAGS)
+    LDFLAGS = $(BASE_LDFLAGS) $(DEBUG_LDFLAGS)
+else ifeq ($(BUILD_TYPE),performance)
+    CXXFLAGS = $(PERFORMANCE_CXXFLAGS)
+    LDFLAGS = $(BASE_LDFLAGS) $(RELEASE_LDFLAGS)
+    ifeq ($(findstring clang,$(CXX)),clang)
+        LDFLAGS += -fprofile-instr-generate
+    else
+        LDFLAGS += -fprofile-generate
+    endif
+else
+    CXXFLAGS = $(RELEASE_CXXFLAGS)
+    LDFLAGS = $(BASE_LDFLAGS) $(RELEASE_LDFLAGS)
+endif
 
 # Platform-specific optimizations for matrix operations
 ifeq ($(shell uname),Darwin)
     # macOS - use Accelerate framework for Apple AMX with new CBLAS interface
     LDFLAGS += -framework Accelerate
     CXXFLAGS += -DUSE_ACCELERATE -DACCELERATE_NEW_LAPACK
+    # Apple Silicon specific optimizations
+    ifeq ($(shell sysctl -n machdep.cpu.brand_string | grep -c "Apple" 2>/dev/null || echo 0),1)
+        # Apple Silicon specific (no -mfpu on macOS ARM64)
+        ifneq ($(BUILD_TYPE),debug)
+            CXXFLAGS += -mcpu=apple-a14
+        endif
+    endif
 else ifeq ($(shell uname),Linux)
     ARCH := $(shell uname -m)
     ifeq ($(ARCH),x86_64)
         # Intel AMX support (requires newer GCC/Clang)
         CXXFLAGS += -mamx-tile -mamx-int8 -mamx-bf16
+        # Enhanced x86_64 optimizations for release builds
+        ifneq ($(BUILD_TYPE),debug)
+            CXXFLAGS += -mavx2 -mfma -mbmi -mbmi2
+            # Check for AVX-512 support
+            ifneq ($(shell grep -c avx512 /proc/cpuinfo 2>/dev/null || echo 0),0)
+                CXXFLAGS += -mavx512f -mavx512cd
+            endif
+        endif
     else ifeq ($(ARCH),aarch64)
         # ARM SVE support (if available)
         CXXFLAGS += -msve-vector-bits=scalable
+        # Enhanced ARM64 optimizations for release builds
+        ifneq ($(BUILD_TYPE),debug)
+            CXXFLAGS += -mcpu=native
+        endif
     endif
 endif
 
@@ -94,6 +187,7 @@ $(TARGET): $(OBJECTS)
 clean:
 	@echo "Cleaning build artifacts..."
 	rm -f $(TARGET) $(OBJECTS)
+	rm -f *.gcda *.gcno  # Clean up profile data
 	@echo "Clean complete"
 
 # Install dependencies (cross-platform)
@@ -118,11 +212,23 @@ info:
 	@echo "  Platform: $(shell uname) $(shell uname -m)"
 	@echo "  Compiler: $(CXX)"
 	@echo "  C++ Standard: C++17"
-	@echo "  Optimization: -O3"
+	@echo "  Build Type: $(BUILD_TYPE)"
+	@echo "  C++ Flags: $(CXXFLAGS)"
+	@echo "  Linker Flags: $(LDFLAGS)"
 	@echo "  Target: $(TARGET)"
 	@echo "  Common sources: $(COMMON_SOURCES)"
 	@echo "  Platform sources: $(PLATFORM_SOURCES)"
 	@echo "  All sources: $(SOURCES)"
+	@echo ""
+	@echo "Available Build Types:"
+	@echo "  debug      - Debug build with sanitizers (-g3 -O0)"
+	@echo "  release    - Optimized release build (-O3 -flto)"
+	@echo "  performance- Performance build with PGO support"
+	@echo ""
+	@echo "Usage Examples:"
+	@echo "  make BUILD_TYPE=debug"
+	@echo "  make BUILD_TYPE=release"
+	@echo "  make pgo-optimized"
 
 # Run with default settings
 run: $(TARGET)
@@ -177,13 +283,46 @@ help: $(TARGET)
 	@echo "Showing program help..."
 	./$(TARGET) --help
 
-# Debug build
-debug: CXXFLAGS += -g -DDEBUG
-debug: $(TARGET)
+# Build type targets
+debug:
+	$(MAKE) BUILD_TYPE=debug $(TARGET)
 
 # Release build (default)
-release: CXXFLAGS += -DNDEBUG
-release: $(TARGET)
+release:
+	$(MAKE) BUILD_TYPE=release $(TARGET)
+
+# Performance build with PGO preparation
+performance:
+	$(MAKE) BUILD_TYPE=performance $(TARGET)
+
+# Profile-guided optimization targets
+pgo-generate:
+	@echo "Building with profile generation..."
+	$(MAKE) BUILD_TYPE=performance $(TARGET)
+
+pgo-use: CXXFLAGS += $(PGO_USE_FLAGS)
+pgo-use:
+	@echo "Building with profile data..."
+	$(MAKE) $(TARGET)
+
+# Complete PGO optimized build workflow
+pgo-optimized: pgo-generate
+	@echo "Running profile generation workload..."
+ifeq ($(findstring clang,$(CXX)),clang)
+	@echo "Using Clang PGO workflow..."
+	LLVM_PROFILE_FILE="default.profraw" ./$(TARGET) --cache-hierarchy --size 1024 || true
+	LLVM_PROFILE_FILE="default.profraw" ./$(TARGET) --pattern matrix --size 512 || true
+	@echo "Converting profile data..."
+	llvm-profdata merge -output=default.profdata default.profraw || xcrun llvm-profdata merge -output=default.profdata default.profraw || echo "Warning: Could not convert profile data"
+else
+	@echo "Using GCC PGO workflow..."
+	./$(TARGET) --cache-hierarchy --size 1024 || true
+	./$(TARGET) --pattern matrix --size 512 || true
+endif
+	@echo "Building optimized binary with profile data..."
+	$(MAKE) clean
+	$(MAKE) pgo-use BUILD_TYPE=performance
+	@echo "Profile-guided optimization complete"
 
 # Test targets
 TEST_SOURCES = $(TESTS_DIR)/test_aligned_buffer.cpp \
@@ -265,6 +404,17 @@ $(TESTS_DIR)/test_working_sets: $(TESTS_DIR)/test_working_sets.o $(COMMON_DIR)/w
 	@echo "Linking test_working_sets..."
 	$(CXX) $^ $(LDFLAGS) -o $@
 
+# Test all build configurations
+test-all-builds: clean
+	@echo "Testing all build configurations..."
+	@echo "Testing debug build..."
+	$(MAKE) BUILD_TYPE=debug tests
+	$(MAKE) test BUILD_TYPE=debug
+	@echo "Testing release build..."
+	$(MAKE) clean && $(MAKE) BUILD_TYPE=release tests
+	$(MAKE) test BUILD_TYPE=release
+	@echo "All build configurations tested successfully"
+
 # Run all tests
 test: tests
 	@echo "Running test suite..."
@@ -275,12 +425,37 @@ test-performance: $(TESTS_DIR)/test_performance_regression
 	@echo "Running performance regression tests..."
 	@$(TESTS_DIR)/test_performance_regression
 
+# Benchmark different build types
+benchmark-builds: clean
+	@echo "Benchmarking different build configurations..."
+	@echo "Building debug version..."
+	$(MAKE) BUILD_TYPE=debug $(TARGET)
+	mv $(TARGET) $(TARGET)_debug
+	@echo "Building release version..."
+	$(MAKE) clean && $(MAKE) BUILD_TYPE=release $(TARGET)
+	mv $(TARGET) $(TARGET)_release
+	@echo "Building PGO version..."
+	$(MAKE) clean && $(MAKE) pgo-optimized
+	mv $(TARGET) $(TARGET)_pgo
+	@echo "Running benchmarks..."
+	@echo "Debug build:"
+	time ./$(TARGET)_debug --cache-hierarchy --size 512 2>/dev/null || true
+	@echo "Release build:"
+	time ./$(TARGET)_release --cache-hierarchy --size 512 2>/dev/null || true
+	@echo "PGO build:"
+	time ./$(TARGET)_pgo --cache-hierarchy --size 512 2>/dev/null || true
+	@echo "Benchmark complete. Check timing results above."
+	rm -f $(TARGET)_debug $(TARGET)_release $(TARGET)_pgo
+
 # Clean tests
 clean-tests:
 	@echo "Cleaning test artifacts..."
 	rm -f $(TEST_OBJECTS) $(TEST_EXECUTABLES)
 
-# Clean everything including tests
+# Clean everything including tests and profile data
 clean-all: clean clean-tests
+	@echo "Cleaning all profile data..."
+	rm -rf *.gcda *.gcno *.profdata *.profraw
+	@echo "Deep clean complete"
 
-.PHONY: all clean clean-tests clean-all install-deps info run run-cache run-p-cores run-e-cores format help debug release tests test
+.PHONY: all clean clean-tests clean-all install-deps info run run-cache run-p-cores run-e-cores format help debug release performance pgo-generate pgo-use pgo-optimized tests test
