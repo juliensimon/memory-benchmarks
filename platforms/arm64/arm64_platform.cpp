@@ -1,4 +1,5 @@
 #include "arm64_platform.h"
+#include "../common/safe_file_utils.h"
 #include <thread>
 #include <cstdio>
 #include <fstream>
@@ -6,6 +7,7 @@
 #ifdef __linux__
 #include <pthread.h>
 #include <sys/sysinfo.h>
+#include <unistd.h>  // for sysconf
 #endif
 
 std::pair<std::string, std::string> ARM64Platform::detect_processor_info() {
@@ -13,44 +15,23 @@ std::pair<std::string, std::string> ARM64Platform::detect_processor_info() {
     std::string model = "";
     
 #ifdef __linux__
-    // Try to get processor information from /proc/cpuinfo first
-    std::ifstream cpuinfo("/proc/cpuinfo");
-    if (cpuinfo.is_open()) {
-        std::string line;
-        while (std::getline(cpuinfo, line)) {
-            if (line.find("model name") != std::string::npos || line.find("Processor") != std::string::npos) {
-                size_t pos = line.find(":");
-                if (pos != std::string::npos) {
-                    model = line.substr(pos + 1);
+    // Try to get processor information from /proc/cpuinfo using safe file utilities
+    std::vector<std::string> cpuinfo_lines;
+    if (SafeFileUtils::read_all_lines("/proc/cpuinfo", cpuinfo_lines)) {
+        for (const auto& line : cpuinfo_lines) {
+            if (line.find("model name") != std::string::npos || 
+                line.find("Processor") != std::string::npos ||
+                line.find("cpu model") != std::string::npos) {
+                size_t colon_pos = line.find(':');
+                if (colon_pos != std::string::npos && colon_pos + 1 < line.length()) {
+                    model = line.substr(colon_pos + 1);
+                    model = SafeFileUtils::sanitize_input(model);
                     model.erase(0, model.find_first_not_of(" \t"));
-                    break;
-                }
-            }
-        }
-        cpuinfo.close();
-    }
-    
-    // If /proc/cpuinfo doesn't provide model name, try lscpu
-    if (model.empty()) {
-        FILE* pipe = popen("lscpu 2>/dev/null", "r");
-        if (pipe) {
-            char buffer[256];
-            while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-                std::string line(buffer);
-                if (line.find("Model name:") != std::string::npos) {
-                    size_t pos = line.find(":");
-                    if (pos != std::string::npos) {
-                        model = line.substr(pos + 1);
-                        model.erase(0, model.find_first_not_of(" \t"));
-                        // Remove trailing newline
-                        if (!model.empty() && model[model.length()-1] == '\n') {
-                            model.erase(model.length()-1);
-                        }
+                    if (!model.empty()) {
                         break;
                     }
                 }
             }
-            pclose(pipe);
         }
     }
     
@@ -163,17 +144,23 @@ std::pair<std::string, std::string> ARM64Platform::detect_processor_info() {
 
 size_t ARM64Platform::detect_cache_line_size() {
     // ARM64 typically uses 64-byte cache lines, but some newer chips use 128 bytes
-    FILE* pipe = popen("getconf LEVEL1_DCACHE_LINESIZE 2>/dev/null", "r");
-    if (pipe) {
-        char buffer[32];
-        if (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-            size_t cache_line_size = std::atoi(buffer);
-            pclose(pipe);
+    // Try sysconf first
+    long cache_line_size = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+    if (cache_line_size > 0 && cache_line_size <= 1024) {
+        return static_cast<size_t>(cache_line_size);
+    }
+    
+    // Try reading from /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size using safe file utilities
+    std::string cache_line_str;
+    if (SafeFileUtils::read_single_line("/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size", cache_line_str)) {
+        try {
+            cache_line_size = std::stoi(cache_line_str);
             if (cache_line_size > 0 && cache_line_size <= 1024) {
-                return cache_line_size;
+                return static_cast<size_t>(cache_line_size);
             }
+        } catch (const std::exception&) {
+            // Fall through to default
         }
-        pclose(pipe);
     }
     
     // Default to 64 bytes for ARM64

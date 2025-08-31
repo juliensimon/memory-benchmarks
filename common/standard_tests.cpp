@@ -13,6 +13,8 @@
 #include "test_patterns.h"
 #include "memory_utils.h"
 #include "constants.h"
+#include "matrix_multiply_interface.h"
+#include "platform_interface.h"
 
 namespace StandardTests {
 
@@ -78,10 +80,17 @@ PerformanceStats sequential_read_test(const uint8_t* buffer, size_t buffer_size,
         size_t num_elements = working_set_size / sizeof(uint64_t);
         
         // Read in cache-line chunks (8 uint64_t = 64 bytes)
-        for(size_t i = 0; i < num_elements; i += 8) {
+        // Ensure we don't read past the end of the buffer
+        size_t full_chunks = num_elements / 8;
+        for(size_t i = 0; i < full_chunks * 8; i += 8) {
             // Read entire cache line naturally
             sum += data[i] + data[i+1] + data[i+2] + data[i+3] +
                    data[i+4] + data[i+5] + data[i+6] + data[i+7];
+        }
+        
+        // Handle remaining elements (if any)
+        for(size_t i = full_chunks * 8; i < num_elements; i++) {
+            sum += data[i];
         }
         
         // Ensure compiler doesn't optimize away the work
@@ -125,7 +134,9 @@ PerformanceStats sequential_write_test(uint8_t* buffer, size_t buffer_size, size
         uint64_t pattern = BenchmarkConstants::TEST_PATTERN_BASE + iter;
         
         // Write in cache-line chunks
-        for(size_t i = 0; i < num_elements; i += BenchmarkConstants::CACHE_LINE_ELEMENTS_UINT64) {
+        // Ensure we don't write past the end of the buffer
+        size_t full_chunks = num_elements / BenchmarkConstants::CACHE_LINE_ELEMENTS_UINT64;
+        for(size_t i = 0; i < full_chunks * BenchmarkConstants::CACHE_LINE_ELEMENTS_UINT64; i += BenchmarkConstants::CACHE_LINE_ELEMENTS_UINT64) {
             // Write entire cache line naturally
             data[i] = pattern + i;
             data[i+1] = pattern + i + 1;
@@ -135,6 +146,11 @@ PerformanceStats sequential_write_test(uint8_t* buffer, size_t buffer_size, size
             data[i+5] = pattern + i + 5;
             data[i+6] = pattern + i + 6;
             data[i+7] = pattern + i + 7;
+        }
+        
+        // Handle remaining elements (if any)
+        for(size_t i = full_chunks * BenchmarkConstants::CACHE_LINE_ELEMENTS_UINT64; i < num_elements; i++) {
+            data[i] = pattern + i;
         }
         
         __sync_synchronize();
@@ -303,6 +319,74 @@ PerformanceStats triad_test(uint8_t* a_buffer, const uint8_t* b_buffer, const ui
     size_t operations = num_elements * iterations;
 
     return calculate_stats(bytes_processed, time_seconds, operations);
+}
+
+/**
+ * @brief Matrix multiplication test using platform-specific hardware acceleration
+ */
+MatrixMultiply::MatrixPerformanceStats matrix_multiply_test(
+    const MatrixMultiply::MatrixConfig& matrix_config,
+    const std::atomic<bool>& stop_flag) {
+    
+    // Use platform-specific matrix multiplier
+    auto platform = create_platform_interface();
+    auto multiplier = platform->create_matrix_multiplier();
+    
+    if (multiplier && multiplier->is_available()) {
+        const size_t M = matrix_config.M;
+        const size_t K = matrix_config.K;
+        const size_t N = matrix_config.N;
+        
+        // Allocate matrices
+        std::vector<float> A(M * K);
+        std::vector<float> B(K * N);
+        std::vector<float> C(M * N);
+        
+        // Initialize matrices with random data
+        MatrixMultiply::initialize_matrix_random(A.data(), M, K, 1.0f);
+        MatrixMultiply::initialize_matrix_random(B.data(), K, N, 1.0f);
+        
+        return multiplier->multiply_float(C.data(), A.data(), B.data(), matrix_config, stop_flag);
+    }
+    
+    // Fallback implementation for platforms without optimized matrix multiplication
+    const size_t M = matrix_config.M;
+    const size_t K = matrix_config.K;
+    const size_t N = matrix_config.N;
+    
+    // Allocate matrices
+    std::vector<float> A(M * K);
+    std::vector<float> B(K * N);
+    std::vector<float> C(M * N);
+    
+    // Initialize matrices with random data
+    MatrixMultiply::initialize_matrix_random(A.data(), M, K, 1.0f);
+    MatrixMultiply::initialize_matrix_random(B.data(), K, N, 1.0f);
+    
+    // Clear result matrix
+    std::memset(C.data(), 0, M * N * sizeof(float));
+    
+    auto start_time = std::chrono::high_resolution_clock::now();
+    
+    // Simple matrix multiplication fallback
+    for (size_t iter = 0; iter < matrix_config.iterations && !stop_flag; ++iter) {
+        for (size_t i = 0; i < M; ++i) {
+            for (size_t k = 0; k < K; ++k) {
+                float a_ik = A[i * K + k];
+                for (size_t j = 0; j < N; ++j) {
+                    C[i * N + j] += a_ik * B[k * N + j];
+                }
+            }
+        }
+    }
+    
+    auto end_time = std::chrono::high_resolution_clock::now();
+    double time_seconds = std::chrono::duration<double>(end_time - start_time).count();
+    
+    size_t operations = 2 * M * N * K * matrix_config.iterations;
+    size_t bytes_processed = (M * K + K * N + M * N) * sizeof(float) * matrix_config.iterations;
+    
+    return MatrixMultiply::calculate_matrix_stats(bytes_processed, time_seconds, operations, "Scalar fallback");
 }
 
 }  // namespace StandardTests

@@ -1,13 +1,16 @@
 #include "intel_platform.h"
+#include "../common/safe_file_utils.h"
 #include <thread>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
+#include <algorithm>
 
 #ifdef __linux__
 #include <pthread.h>
 #include <sys/sysinfo.h>
 #include <cstring>
+#include <unistd.h>  // for sysconf
 #endif
 
 std::pair<std::string, std::string> IntelPlatform::detect_processor_info() {
@@ -15,21 +18,16 @@ std::pair<std::string, std::string> IntelPlatform::detect_processor_info() {
     std::string model = "";
     
 #ifdef __linux__
-    // Try to get processor information from /proc/cpuinfo
-    std::ifstream cpuinfo("/proc/cpuinfo");
-    if (cpuinfo.is_open()) {
-        std::string line;
-        while (std::getline(cpuinfo, line)) {
-            if (line.find("model name") != std::string::npos) {
-                size_t pos = line.find(":");
-                if (pos != std::string::npos) {
-                    model = line.substr(pos + 1);
-                    model.erase(0, model.find_first_not_of(" \t"));
-                    break;
-                }
-            }
+    // Try to get processor information from /proc/cpuinfo using safe file utilities
+    std::string cpu_line;
+    if (SafeFileUtils::find_pattern("/proc/cpuinfo", "model name", cpu_line)) {
+        size_t colon_pos = cpu_line.find(':');
+        if (colon_pos != std::string::npos && colon_pos + 1 < cpu_line.length()) {
+            model = cpu_line.substr(colon_pos + 1);
+            model = SafeFileUtils::sanitize_input(model);
+            // Remove leading whitespace
+            model.erase(0, model.find_first_not_of(" \t"));
         }
-        cpuinfo.close();
     }
 #endif
     
@@ -37,18 +35,23 @@ std::pair<std::string, std::string> IntelPlatform::detect_processor_info() {
 }
 
 size_t IntelPlatform::detect_cache_line_size() {
-    // Try getconf first
-    FILE* pipe = popen("getconf LEVEL1_DCACHE_LINESIZE 2>/dev/null", "r");
-    if (pipe) {
-        char buffer[32];
-        if (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-            size_t cache_line_size = std::atoi(buffer);
-            pclose(pipe);
+    // Try sysconf first
+    long cache_line_size = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+    if (cache_line_size > 0 && cache_line_size <= 1024) {
+        return static_cast<size_t>(cache_line_size);
+    }
+    
+    // Try reading from /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size using safe file utilities
+    std::string cache_line_str;
+    if (SafeFileUtils::read_single_line("/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size", cache_line_str)) {
+        try {
+            cache_line_size = std::stoi(cache_line_str);
             if (cache_line_size > 0 && cache_line_size <= 1024) {
-                return cache_line_size;
+                return static_cast<size_t>(cache_line_size);
             }
+        } catch (const std::exception&) {
+            // Fall through to default
         }
-        pclose(pipe);
     }
     
     // Fallback to standard Intel cache line size
@@ -166,31 +169,45 @@ bool IntelPlatform::supports_cpu_affinity() {
 
 bool IntelPlatform::detect_virtualization() {
 #ifdef __linux__
-    // Check if running in a virtualized environment
-    FILE* cpuinfo = fopen("/proc/cpuinfo", "r");
-    if (cpuinfo) {
-        char line[256];
-        while (fgets(line, sizeof(line), cpuinfo)) {
-            if (strstr(line, "hypervisor") || strstr(line, "KVM") || 
-                strstr(line, "VMware") || strstr(line, "VirtualBox")) {
-                fclose(cpuinfo);
+    // Check if running in a virtualized environment using safe file utilities
+    std::vector<std::string> cpuinfo_lines;
+    if (SafeFileUtils::read_all_lines("/proc/cpuinfo", cpuinfo_lines)) {
+        for (const auto& line : cpuinfo_lines) {
+            std::string lower_line = line;
+            std::transform(lower_line.begin(), lower_line.end(), lower_line.begin(), ::tolower);
+            if (lower_line.find("hypervisor") != std::string::npos || 
+                lower_line.find("kvm") != std::string::npos ||
+                lower_line.find("vmware") != std::string::npos || 
+                lower_line.find("virtualbox") != std::string::npos) {
                 return true;
             }
         }
-        fclose(cpuinfo);
     }
     
-    // Check dmidecode for virtualization indicators
-    FILE* dmidecode = popen("sudo dmidecode -t memory 2>/dev/null | grep -c 'Memory Device'", "r");
-    if (dmidecode) {
-        char result[16];
-        if (fgets(result, sizeof(result), dmidecode) != nullptr) {
-            int device_count = atoi(result);
-            pclose(dmidecode);
-            // If only 1 memory device is reported, likely virtualized
-            return device_count <= 1;
+    // Check for virtualization through DMI info using safe file utilities
+    std::string product_name;
+    if (SafeFileUtils::read_single_line("/sys/class/dmi/id/product_name", product_name)) {
+        std::transform(product_name.begin(), product_name.end(), product_name.begin(), ::tolower);
+        // Common virtualization product names
+        if (product_name.find("vmware") != std::string::npos ||
+            product_name.find("virtualbox") != std::string::npos ||
+            product_name.find("qemu") != std::string::npos ||
+            product_name.find("kvm") != std::string::npos ||
+            product_name.find("xen") != std::string::npos ||
+            product_name.find("hyper-v") != std::string::npos) {
+            return true;
         }
-        pclose(dmidecode);
+    }
+    
+    // Check DMI chassis vendor
+    std::string vendor;
+    if (SafeFileUtils::read_single_line("/sys/class/dmi/id/sys_vendor", vendor)) {
+        std::transform(vendor.begin(), vendor.end(), vendor.begin(), ::tolower);
+        if (vendor.find("vmware") != std::string::npos ||
+            vendor.find("qemu") != std::string::npos ||
+            vendor.find("microsoft corporation") != std::string::npos) {
+            return true;
+        }
     }
 #endif
     return false;

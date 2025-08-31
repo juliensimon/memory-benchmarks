@@ -28,6 +28,9 @@ public:
     // Platform identification
     std::string get_platform_name() override { return "macOS"; }
     bool supports_cpu_affinity() override { return true; }
+    
+    // Matrix multiplication
+    std::unique_ptr<MatrixMultiply::MatrixMultiplier> create_matrix_multiplier() override;
 
 private:
     // Helper methods

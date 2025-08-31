@@ -87,6 +87,7 @@ private:
     void validate_memory_sizes(const BenchmarkConfig& config);
     void validate_pattern(const BenchmarkConfig& config);
     void validate_format(const BenchmarkConfig& config);
+    void validate_mode_compatibility(const BenchmarkConfig& config);
     
     // Helper methods
     std::vector<double> parse_memory_sizes(const std::string& size_str);

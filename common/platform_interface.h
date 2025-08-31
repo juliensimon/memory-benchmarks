@@ -2,6 +2,7 @@
 #define PLATFORM_INTERFACE_H
 
 #include "memory_types.h"
+#include "matrix_multiply_interface.h"
 #include <string>
 #include <utility>
 #include <memory>
@@ -32,6 +33,9 @@ public:
     // Platform identification
     virtual std::string get_platform_name() = 0;
     virtual bool supports_cpu_affinity() = 0;
+    
+    // Matrix multiplication
+    virtual std::unique_ptr<MatrixMultiply::MatrixMultiplier> create_matrix_multiplier() = 0;
 };
 
 /**

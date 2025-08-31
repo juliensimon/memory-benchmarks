@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "test_patterns.h"
+#include "matrix_multiply_interface.h"
 
 /**
  * @brief Standard memory bandwidth test routines
@@ -114,6 +115,22 @@ PerformanceStats triad_test(uint8_t* a_buffer, const uint8_t* b_buffer, const ui
                             const uint8_t* d_buffer, size_t buffer_size, size_t start_offset,
                             size_t end_offset, size_t iterations,
                             const std::atomic<bool>& stop_flag);
+
+/**
+ * @brief Matrix multiplication test using hardware acceleration
+ * 
+ * Performs C = A * B matrix multiplication using platform-specific
+ * hardware acceleration (Apple AMX, ARM Neoverse, Intel AMX).
+ * This test measures GFLOPS and memory bandwidth for compute-intensive workloads.
+ * 
+ * @param matrix_config Matrix dimensions and configuration
+ * @param iterations Number of iterations to perform
+ * @param stop_flag Atomic flag to signal test termination
+ * @return MatrixPerformanceStats containing specialized matrix test results
+ */
+MatrixMultiply::MatrixPerformanceStats matrix_multiply_test(
+    const MatrixMultiply::MatrixConfig& matrix_config,
+    const std::atomic<bool>& stop_flag);
 
 }  // namespace StandardTests
 

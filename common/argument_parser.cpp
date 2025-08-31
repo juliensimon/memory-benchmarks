@@ -49,7 +49,7 @@ ArgumentParser::ArgumentParser(const std::string& program_name, const std::strin
             }
         });
     
-    add_argument("--pattern", "", "Test pattern: sequential_read, sequential_write, random_read, random_write, copy, triad (default: all)", true,
+    add_argument("--pattern", "", "Test pattern: sequential_read, sequential_write, random_read, random_write, copy, triad, matrix_multiply (default: all)", true,
         [](BenchmarkConfig& config, const std::string& value) {
             config.pattern_str = value;
         });
@@ -149,6 +149,7 @@ void ArgumentParser::validate_config(BenchmarkConfig& config) {
     validate_memory_sizes(config);
     validate_pattern(config);
     validate_format(config);
+    validate_mode_compatibility(config);
 }
 
 void ArgumentParser::validate_thread_count(const BenchmarkConfig& config) {
@@ -221,6 +222,15 @@ void ArgumentParser::validate_format(const BenchmarkConfig& config) {
     }
 }
 
+void ArgumentParser::validate_mode_compatibility(const BenchmarkConfig& config) {
+    // --cache-hierarchy and --pattern are mutually exclusive
+    if (config.cache_hierarchy && config.pattern_str != "all") {
+        throw ArgumentError("--cache-hierarchy and --pattern are mutually exclusive. "
+                           "Cache hierarchy mode runs its own comprehensive test suite. "
+                           "Use --large-memory for pattern-specific tests.");
+    }
+}
+
 std::vector<double> ArgumentParser::parse_memory_sizes(const std::string& size_str) {
     std::vector<double> sizes;
     std::stringstream ss(size_str);
@@ -252,7 +262,7 @@ std::vector<double> ArgumentParser::parse_memory_sizes(const std::string& size_s
 }
 
 std::vector<std::string> ArgumentParser::get_supported_patterns() const {
-    return {"all", "sequential_read", "sequential_write", "random_read", "random_write", "copy", "triad"};
+    return {"all", "sequential_read", "sequential_write", "random_read", "random_write", "copy", "triad", "matrix_multiply"};
 }
 
 std::vector<std::string> ArgumentParser::get_supported_formats() const {

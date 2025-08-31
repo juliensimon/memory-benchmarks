@@ -1,4 +1,5 @@
 #include "macos_platform.h"
+#include "macos_matrix_multiplier.h"
 #include <mach/mach.h>
 #include <mach/mach_host.h>
 #include <mach/mach_init.h>
@@ -19,18 +20,21 @@ std::pair<std::string, std::string> MacOSPlatform::detect_processor_info() {
     std::string arch = "";
     std::string model = "";
     
-    // macOS processor detection
-    FILE* chip_pipe = popen("sysctl -n machdep.cpu.brand_string 2>/dev/null", "r");
-    if (chip_pipe) {
-        char buffer[256];
-        if (fgets(buffer, sizeof(buffer), chip_pipe) != nullptr) {
-            model = std::string(buffer);
-            // Remove newline
-            if (!model.empty() && model.back() == '\n') {
-                model.pop_back();
-            }
-        }
-        pclose(chip_pipe);
+    // Detect architecture first
+    size_t arch_size = 256;
+    char arch_buffer[256];
+    if (sysctlbyname("hw.machine", arch_buffer, &arch_size, nullptr, 0) == 0) {
+        arch = std::string(arch_buffer);
+        arch.erase(arch.find_last_not_of(" \t\r\n") + 1);
+    }
+    
+    // macOS processor detection using safe sysctlbyname API
+    size_t model_size = 256;
+    char buffer[256];
+    if (sysctlbyname("machdep.cpu.brand_string", buffer, &model_size, nullptr, 0) == 0) {
+        model = std::string(buffer);
+        // Remove any trailing whitespace/newline
+        model.erase(model.find_last_not_of(" \t\r\n") + 1);
     }
     
     return std::make_pair(arch, model);
@@ -92,16 +96,12 @@ CacheInfo MacOSPlatform::detect_cache_info() {
     // Apple Silicon has System Level Cache (SLC) instead of traditional L3
     // Detect chip model to set appropriate SLC size
     std::string chip_model = "";
-    FILE* chip_pipe = popen("sysctl -n machdep.cpu.brand_string 2>/dev/null", "r");
-    if (chip_pipe) {
-        char chip_buffer[256];
-        if (fgets(chip_buffer, sizeof(chip_buffer), chip_pipe) != nullptr) {
-            chip_model = std::string(chip_buffer);
-            if (!chip_model.empty() && chip_model.back() == '\n') {
-                chip_model.pop_back();
-            }
-        }
-        pclose(chip_pipe);
+    char chip_buffer[256];
+    size_t chip_size = sizeof(chip_buffer);
+    if (sysctlbyname("machdep.cpu.brand_string", chip_buffer, &chip_size, nullptr, 0) == 0) {
+        chip_model = std::string(chip_buffer);
+        // Remove any trailing whitespace/newline
+        chip_model.erase(chip_model.find_last_not_of(" \t\r\n") + 1);
     }
 
     // Set System Level Cache (SLC) size based on chip model
@@ -342,4 +342,8 @@ SystemInfo MacOSPlatform::get_system_info() {
     sys_info.cache_info = detect_cache_info();
     
     return sys_info;
+}
+
+std::unique_ptr<MatrixMultiply::MatrixMultiplier> MacOSPlatform::create_matrix_multiplier() {
+    return std::make_unique<MatrixMultiply::MacOSMatrixMultiplier>();
 }

@@ -18,12 +18,14 @@
 #include "common/working_sets.h"
 #include "common/output_formatter.h"
 #include "common/standard_tests.h"
+#include "common/matrix_multiply_interface.h"
 #include "common/test_patterns.h"
 #include "common/argument_parser.h"
 #include "common/system_info_display.h"
 #include "common/memory_utils.h"
 #include "common/constants.h"
 #include "common/errors.h"
+#include "common/aligned_buffer.h"
 
 using namespace BenchmarkConstants;
 
@@ -58,8 +60,8 @@ private:
     std::unique_ptr<PlatformInterface> platform;
     CacheInfo cache_info;
     WorkingSetSizes working_sets;
-    std::vector<uint8_t*> raw_buffers;
-    std::vector<uint8_t*> aligned_buffers;
+    std::vector<AlignedBuffer> buffers;
+    std::vector<uint8_t*> aligned_buffers; // Keep for compatibility with existing test functions
     size_t current_buffer_size;
     std::atomic<bool> stop_flag;
     OutputFormatter formatter;
@@ -99,56 +101,35 @@ public:
         cleanup_buffers();
         current_buffer_size = buffer_size;
 
-        for(size_t i = 0; i < num_buffers; ++i) {
-            // Allocate extra space to ensure we can achieve cache line alignment
-            uint8_t* raw_buffer = nullptr;
-            try {
-                raw_buffer = new uint8_t[buffer_size + cache_line_size];
-            } catch (const std::bad_alloc& e) {
-                cleanup_buffers();
-                throw MemoryError("Failed to allocate buffer " + std::to_string(i) + 
-                                " of size " + std::to_string(buffer_size + cache_line_size) + " bytes: " + e.what());
+        try {
+            buffers.reserve(num_buffers);
+            aligned_buffers.reserve(num_buffers);
+            
+            for(size_t i = 0; i < num_buffers; ++i) {
+                // Create aligned buffer using RAII - automatically handles alignment and initialization
+                buffers.emplace_back(buffer_size, cache_line_size);
+                
+                // Verify alignment was achieved
+                if (!buffers.back().is_aligned()) {
+                    throw MemoryError("Failed to achieve cache line alignment for buffer " + std::to_string(i));
+                }
+                
+                // Store pointer for compatibility with existing test functions
+                aligned_buffers.push_back(buffers.back().data());
             }
-            if(!raw_buffer) {
-                cleanup_buffers();
-                throw MemoryError("Memory allocation returned nullptr for buffer " + std::to_string(i));
-            }
-
-            /**
-             * Cache Line Aligned Buffer Allocation
-             * 
-             * Problem: new[] doesn't guarantee cache line alignment, which can hurt performance
-             * Solution: Allocate extra space and manually align the buffer
-             * 
-             * Step 1: Get raw pointer address as integer
-             * Step 2: Round UP to next cache line boundary using bit masking
-             *   - Formula: (addr + cache_line_size - 1) & ~(cache_line_size - 1)
-             *   - The mask ~(cache_line_size - 1) clears the lower bits to align
-             *   - Example: addr=0x1009, cache_line=64 (0x40)
-             *     → (0x1009 + 0x3F) & ~0x3F → 0x1048 & 0xFFC0 → 0x1040
-             * Step 3: Convert back to pointer for aligned memory access
-             * 
-             * This ensures all buffer accesses are cache line aligned for optimal performance.
-             */
-            uintptr_t addr = reinterpret_cast<uintptr_t>(raw_buffer);
-            uintptr_t aligned_addr = (addr + cache_line_size - 1) & ~(cache_line_size - 1);
-            uint8_t* aligned_buffer = reinterpret_cast<uint8_t*>(aligned_addr);
-
-            raw_buffers.push_back(raw_buffer);
-            aligned_buffers.push_back(aligned_buffer);
-
-            for(size_t j = 0; j < buffer_size; ++j) {
-                aligned_buffer[j] = static_cast<uint8_t>(j & 0xFF);
-            }
+        } catch (const std::bad_alloc& e) {
+            cleanup_buffers();
+            throw MemoryError("Failed to allocate buffer of size " + std::to_string(buffer_size) + " bytes: " + e.what());
+        } catch (const std::invalid_argument& e) {
+            cleanup_buffers();
+            throw MemoryError("Invalid buffer parameters: " + std::string(e.what()));
         }
         return true;
     }
 
     void cleanup_buffers() {
-        for(auto buffer : raw_buffers) {
-            delete[] buffer;
-        }
-        raw_buffers.clear();
+        // RAII: AlignedBuffer destructors automatically handle memory cleanup
+        buffers.clear();
         aligned_buffers.clear();
     }
 
@@ -208,6 +189,23 @@ public:
                                 iterations, stop_flag);
                         }
                         break;
+                    case TestPattern::MATRIX_MULTIPLY: {
+                        // Matrix multiplication uses different parameters
+                        size_t matrix_size = 1024;  // Default matrix size
+                        MatrixMultiply::MatrixConfig matrix_config = 
+                            MatrixMultiply::create_matrix_config(matrix_size, iterations, false);
+                        
+                        auto matrix_stats = StandardTests::matrix_multiply_test(matrix_config, stop_flag);
+                        
+                        // Convert matrix stats to PerformanceStats for compatibility
+                        PerformanceStats stats;
+                        stats.bandwidth_gbps = matrix_stats.bandwidth_gbps;
+                        stats.latency_ns = matrix_stats.latency_ns;
+                        stats.bytes_processed = matrix_stats.bytes_processed;
+                        stats.time_seconds = matrix_stats.time_seconds;
+                        thread_results[i] = stats;
+                        break;
+                    }
                 }
             });
         }
@@ -300,7 +298,7 @@ std::vector<TestPattern> parse_patterns(const std::string& pattern_str) {
     if(pattern_str == "all") {
         patterns = {TestPattern::SEQUENTIAL_READ, TestPattern::SEQUENTIAL_WRITE,
                     TestPattern::RANDOM_READ, TestPattern::RANDOM_WRITE,
-                    TestPattern::COPY, TestPattern::TRIAD};
+                    TestPattern::COPY, TestPattern::TRIAD, TestPattern::MATRIX_MULTIPLY};
     } else {
         if(pattern_str == "sequential_read") patterns.push_back(TestPattern::SEQUENTIAL_READ);
         else if(pattern_str == "sequential_write") patterns.push_back(TestPattern::SEQUENTIAL_WRITE);
@@ -308,6 +306,7 @@ std::vector<TestPattern> parse_patterns(const std::string& pattern_str) {
         else if(pattern_str == "random_write") patterns.push_back(TestPattern::RANDOM_WRITE);
         else if(pattern_str == "copy") patterns.push_back(TestPattern::COPY);
         else if(pattern_str == "triad") patterns.push_back(TestPattern::TRIAD);
+        else if(pattern_str == "matrix_multiply") patterns.push_back(TestPattern::MATRIX_MULTIPLY);
         else {
             std::cerr << "Error: Unknown pattern '" << pattern_str << "'" << std::endl;
             exit(1);

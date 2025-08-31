@@ -17,9 +17,13 @@ std::string format_memory_specifications(const MemorySpecs& mem_specs) {
     std::stringstream ss;
     ss << "## Memory Specifications\n\n";
 
-    // Memory architecture - show if unified memory
-    if(mem_specs.is_unified_memory) {
-        ss << "- **Architecture:** " << mem_specs.architecture << " ✓\n";
+    // Memory architecture - show if available
+    if(!mem_specs.architecture.empty()) {
+        ss << "- **Architecture:** " << mem_specs.architecture;
+        if(mem_specs.is_unified_memory) {
+            ss << " ✓";
+        }
+        ss << "\n";
     }
 
     // Memory type - detected for Apple Silicon, estimated for others

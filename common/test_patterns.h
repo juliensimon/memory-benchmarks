@@ -16,7 +16,8 @@ enum class TestPattern {
     RANDOM_READ,       ///< Random read access pattern
     RANDOM_WRITE,      ///< Random write access pattern
     COPY,              ///< Memory copy operation (read from one buffer, write to another)
-    TRIAD              ///< STREAM Triad operation (A[i] = B[i] + C[i] * D[i])
+    TRIAD,             ///< STREAM Triad operation (A[i] = B[i] + C[i] * D[i])
+    MATRIX_MULTIPLY    ///< Matrix multiplication with hardware acceleration (GEMM)
 };
 
 /**

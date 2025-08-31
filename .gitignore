@@ -38,6 +38,11 @@
 *.app
 memory_bandwidth
 
+# Test executables
+test_*
+!test_*.cpp
+!test_*.h
+
 # debug information files
 *.dwo
 

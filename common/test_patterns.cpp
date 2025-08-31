@@ -25,6 +25,8 @@ std::string get_pattern_name(TestPattern pattern) {
             return "Copy";
         case TestPattern::TRIAD:
             return "Triad";
+        case TestPattern::MATRIX_MULTIPLY:
+            return "Matrix Multiply (GEMM)";
         default:
             return "Unknown";
     }
