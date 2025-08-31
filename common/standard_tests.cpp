@@ -239,9 +239,13 @@ PerformanceStats random_access_test(uint8_t* buffer, size_t buffer_size, size_t 
 PerformanceStats copy_test(const uint8_t* src_buffer, uint8_t* dst_buffer, size_t buffer_size,
                            size_t start_offset, size_t end_offset, size_t iterations,
                            const std::atomic<bool>& stop_flag) {
-    (void)buffer_size;  // Unused
+    // SECURITY: Validate memory operation parameters to prevent buffer overflow
+    if (!MemoryUtils::validate_memory_operation(start_offset, end_offset, buffer_size, DEFAULT_CACHE_LINE_SIZE)) {
+        // Return error stats for invalid parameters
+        return {0.0, 0.0, 0, 0.0};
+    }
     
-    // Align to cache line boundaries
+    // Align to cache line boundaries - now safe after validation
     auto [aligned_start, aligned_end] = MemoryUtils::align_to_cache_lines(start_offset, end_offset, DEFAULT_CACHE_LINE_SIZE);
     
     if (aligned_end <= aligned_start) {
@@ -253,8 +257,13 @@ PerformanceStats copy_test(const uint8_t* src_buffer, uint8_t* dst_buffer, size_
     auto start_time = std::chrono::high_resolution_clock::now();
 
     for(size_t iter = 0; iter < iterations && !stop_flag; ++iter) {
-        // Use optimized memory copy - let the system work efficiently
-        memcpy(dst_buffer + aligned_start, src_buffer + aligned_start, working_set_size);
+        // SECURITY: Use safe memory copy with bounds checking
+        if (!MemoryUtils::safe_memory_copy(dst_buffer, buffer_size,
+                                          src_buffer, buffer_size,
+                                          aligned_start, working_set_size)) {
+            // Memory copy failed - abort benchmark
+            return {0.0, 0.0, 0, 0.0};
+        }
         __sync_synchronize();
     }
 

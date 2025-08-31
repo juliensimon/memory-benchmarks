@@ -87,6 +87,55 @@ namespace MemoryUtils {
      */
     size_t scale_iterations(size_t base_iterations, size_t working_set_size);
 
+    /**
+     * @brief Validate memory operation parameters for security
+     *
+     * Performs comprehensive validation of memory operation parameters to prevent
+     * buffer overflows and other memory safety issues.
+     *
+     * @param start_offset Starting offset for memory operation
+     * @param end_offset Ending offset for memory operation
+     * @param buffer_size Total buffer size in bytes
+     * @param cache_line_size Cache line size for alignment calculations
+     * @return true if parameters are safe, false otherwise
+     */
+    bool validate_memory_operation(size_t start_offset,
+                                   size_t end_offset,
+                                   size_t buffer_size,
+                                   size_t cache_line_size);
+
+    /**
+     * @brief Safe memory copy with bounds checking
+     *
+     * Performs memory copy operation with comprehensive bounds checking to prevent
+     * buffer overflows. This is a secure wrapper around memcpy.
+     *
+     * @param dst Destination buffer
+     * @param dst_size Size of destination buffer
+     * @param src Source buffer  
+     * @param src_size Size of source buffer
+     * @param offset Offset into both buffers
+     * @param size Number of bytes to copy
+     * @return true if copy succeeded, false if parameters invalid
+     */
+    bool safe_memory_copy(void* dst, size_t dst_size,
+                          const void* src, size_t src_size,
+                          size_t offset, size_t size);
+
+    /**
+     * @brief Safe memory set with bounds checking
+     *
+     * Performs memory set operation with comprehensive bounds checking to prevent
+     * buffer overflows. This is a secure wrapper around memset.
+     *
+     * @param ptr Destination buffer
+     * @param buffer_size Size of destination buffer
+     * @param value Value to set
+     * @param size Number of bytes to set
+     * @return true if set succeeded, false if parameters invalid
+     */
+    bool safe_memory_set(void* ptr, size_t buffer_size, int value, size_t size);
+
 } // namespace MemoryUtils
 
 #endif // MEMORY_UTILS_H

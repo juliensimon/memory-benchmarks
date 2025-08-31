@@ -1,6 +1,8 @@
 #include "test_framework.h"
 #include "../common/memory_utils.h"
 #include "../common/constants.h"
+#include <cstring>
+#include <limits>
 
 using namespace MemoryUtils;
 using namespace BenchmarkConstants;
@@ -206,6 +208,144 @@ void test_integration_align_and_calculate() {
     ASSERT_TRUE(validate_buffer_range(aligned_start, aligned_end, end, cache_line));
 }
 
+// SECURITY TESTS - Added to fix GitHub Issue #1
+void test_validate_memory_operation_security() {
+    size_t buffer_size = 1024;
+    size_t cache_line = 64;
+    
+    // Valid operations
+    ASSERT_TRUE(validate_memory_operation(0, 512, buffer_size, cache_line));
+    ASSERT_TRUE(validate_memory_operation(100, 900, buffer_size, cache_line));
+    
+    // SECURITY: Test buffer overflow conditions
+    ASSERT_FALSE(validate_memory_operation(0, buffer_size + 1, buffer_size, cache_line)); // end > buffer_size
+    ASSERT_FALSE(validate_memory_operation(buffer_size + 1, buffer_size + 100, buffer_size, cache_line)); // start > buffer_size
+    
+    // SECURITY: Test integer overflow conditions
+    ASSERT_FALSE(validate_memory_operation(std::numeric_limits<size_t>::max() - 10, 
+                                         std::numeric_limits<size_t>::max(), 
+                                         buffer_size, cache_line));
+    
+    // SECURITY: Test malicious cache line sizes
+    ASSERT_FALSE(validate_memory_operation(0, 512, buffer_size, 0)); // zero cache line
+    ASSERT_FALSE(validate_memory_operation(0, 512, buffer_size, 3)); // non-power-of-2
+    ASSERT_FALSE(validate_memory_operation(0, 512, buffer_size, 2048)); // too large
+    
+    // SECURITY: Test range ordering attacks
+    ASSERT_FALSE(validate_memory_operation(500, 400, buffer_size, cache_line)); // start > end
+    ASSERT_FALSE(validate_memory_operation(300, 300, buffer_size, cache_line)); // start == end
+}
+
+void test_safe_memory_copy_security() {
+    uint8_t src_buffer[100];
+    uint8_t dst_buffer[100];
+    
+    // Fill source with test data
+    for (int i = 0; i < 100; i++) {
+        src_buffer[i] = static_cast<uint8_t>(i);
+    }
+    
+    // Valid copy operations
+    ASSERT_TRUE(safe_memory_copy(dst_buffer, sizeof(dst_buffer), 
+                                src_buffer, sizeof(src_buffer), 0, 50));
+    ASSERT_TRUE(safe_memory_copy(dst_buffer, sizeof(dst_buffer), 
+                                src_buffer, sizeof(src_buffer), 10, 30));
+    
+    // SECURITY: Test null pointer attacks
+    ASSERT_FALSE(safe_memory_copy(nullptr, 100, src_buffer, sizeof(src_buffer), 0, 50));
+    ASSERT_FALSE(safe_memory_copy(dst_buffer, sizeof(dst_buffer), nullptr, 100, 0, 50));
+    ASSERT_FALSE(safe_memory_copy(nullptr, 0, nullptr, 0, 0, 50));
+    
+    // SECURITY: Test buffer overflow attacks
+    ASSERT_FALSE(safe_memory_copy(dst_buffer, sizeof(dst_buffer), 
+                                 src_buffer, sizeof(src_buffer), 0, 150)); // size > dst_size
+    ASSERT_FALSE(safe_memory_copy(dst_buffer, sizeof(dst_buffer), 
+                                 src_buffer, sizeof(src_buffer), 90, 20)); // offset + size > src_size
+    ASSERT_FALSE(safe_memory_copy(dst_buffer, sizeof(dst_buffer), 
+                                 src_buffer, sizeof(src_buffer), 90, 20)); // offset + size > dst_size
+    
+    // SECURITY: Test integer overflow attacks
+    size_t max_offset = std::numeric_limits<size_t>::max() - 10;
+    ASSERT_FALSE(safe_memory_copy(dst_buffer, sizeof(dst_buffer), 
+                                 src_buffer, sizeof(src_buffer), max_offset, 50));
+    
+    // SECURITY: Test zero-size copy (should succeed but not crash)
+    ASSERT_TRUE(safe_memory_copy(dst_buffer, sizeof(dst_buffer), 
+                                src_buffer, sizeof(src_buffer), 0, 0));
+}
+
+void test_safe_memory_set_security() {
+    uint8_t buffer[100];
+    
+    // Valid set operations
+    ASSERT_TRUE(safe_memory_set(buffer, sizeof(buffer), 0x42, 50));
+    ASSERT_TRUE(safe_memory_set(buffer, sizeof(buffer), 0, sizeof(buffer)));
+    
+    // SECURITY: Test null pointer attack
+    ASSERT_FALSE(safe_memory_set(nullptr, 100, 0x42, 50));
+    
+    // SECURITY: Test buffer overflow attack
+    ASSERT_FALSE(safe_memory_set(buffer, sizeof(buffer), 0x42, 200)); // size > buffer_size
+    
+    // SECURITY: Test zero-size set (should succeed but not crash)  
+    ASSERT_TRUE(safe_memory_set(buffer, sizeof(buffer), 0x42, 0));
+    
+    // Verify the actual memset worked for valid case
+    memset(buffer, 0, sizeof(buffer)); // Clear first
+    ASSERT_TRUE(safe_memory_set(buffer, sizeof(buffer), 0xAA, 10));
+    for (int i = 0; i < 10; i++) {
+        ASSERT_TRUE(buffer[i] == 0xAA);
+    }
+    // Rest should still be zero
+    for (int i = 10; i < 100; i++) {
+        ASSERT_TRUE(buffer[i] == 0);
+    }
+}
+
+void test_memory_operation_integration_security() {
+    // Test that validate_memory_operation correctly predicts what safe_memory_copy will accept
+    uint8_t src_buffer[1000];
+    uint8_t dst_buffer[1000];
+    size_t buffer_size = sizeof(src_buffer);
+    size_t cache_line = 64;
+    
+    // Test case 1: Valid parameters - both should succeed
+    size_t start1 = 100, end1 = 800;
+    bool validation_result1 = validate_memory_operation(start1, end1, buffer_size, cache_line);
+    
+    if (validation_result1) {
+        auto [aligned_start, aligned_end] = align_to_cache_lines(start1, end1, cache_line);
+        size_t working_set_size = calculate_working_set_size(aligned_start, aligned_end);
+        
+        bool copy_result = safe_memory_copy(dst_buffer, buffer_size,
+                                          src_buffer, buffer_size,
+                                          aligned_start, working_set_size);
+        ASSERT_TRUE(copy_result); // Should succeed if validation passed
+    }
+    
+    // Test case 2: Invalid parameters - validation should fail, copy should not be attempted
+    size_t start2 = 100, end2 = 1200; // end > buffer_size
+    bool validation_result2 = validate_memory_operation(start2, end2, buffer_size, cache_line);
+    ASSERT_FALSE(validation_result2); // Should fail validation
+    
+    // Test case 3: Edge case - very small buffer
+    uint8_t small_src[10];
+    uint8_t small_dst[10];
+    size_t small_start = 0, small_end = 10;
+    
+    bool validation_result3 = validate_memory_operation(small_start, small_end, 10, cache_line);
+    if (validation_result3) {
+        auto [aligned_start3, aligned_end3] = align_to_cache_lines(small_start, small_end, cache_line);
+        size_t working_set_size3 = calculate_working_set_size(aligned_start3, aligned_end3);
+        
+        if (working_set_size3 > 0) {
+            bool copy_result3 = safe_memory_copy(small_dst, 10, small_src, 10,
+                                               aligned_start3, working_set_size3);
+            ASSERT_TRUE(copy_result3); // Should succeed if we get here
+        }
+    }
+}
+
 int main() {
     TestFramework framework;
     
@@ -220,6 +360,12 @@ int main() {
     TEST_CASE("Scale iterations", test_scale_iterations);
     TEST_CASE("Scale iterations boundary conditions", test_scale_iterations_boundary_conditions);
     TEST_CASE("Integration align and calculate", test_integration_align_and_calculate);
+    
+    // SECURITY TEST CASES - Added to fix GitHub Issue #1
+    TEST_CASE("SECURITY: Validate memory operation", test_validate_memory_operation_security);
+    TEST_CASE("SECURITY: Safe memory copy", test_safe_memory_copy_security);
+    TEST_CASE("SECURITY: Safe memory set", test_safe_memory_set_security);
+    TEST_CASE("SECURITY: Memory operation integration", test_memory_operation_integration_security);
     
     return framework.run_all();
 }
