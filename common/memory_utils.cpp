@@ -1,6 +1,8 @@
 #include "memory_utils.h"
 #include "constants.h"
 #include <algorithm>
+#include <cstring>
+#include <limits>
 
 using namespace BenchmarkConstants;
 
@@ -97,6 +99,116 @@ size_t scale_iterations(size_t base_iterations, size_t working_set_size) {
     
     // For large working sets, use base iterations
     return base_iterations;
+}
+
+bool validate_memory_operation(size_t start_offset,
+                               size_t end_offset,
+                               size_t buffer_size,
+                               size_t cache_line_size) {
+    // Check for integer overflow conditions
+    if (start_offset > buffer_size || end_offset > buffer_size) {
+        return false;
+    }
+    
+    // Validate range ordering
+    if (start_offset >= end_offset) {
+        return false;
+    }
+    
+    // Validate cache line size is power of 2 and reasonable
+    if (cache_line_size == 0 || (cache_line_size & (cache_line_size - 1)) != 0) {
+        return false;
+    }
+    
+    if (cache_line_size > 1024) { // Reasonable upper limit
+        return false;
+    }
+    
+    // Calculate aligned boundaries and check for overflow
+    size_t aligned_start, aligned_end;
+    
+    // Check for potential overflow in alignment calculation
+    if (start_offset > (std::numeric_limits<size_t>::max() - cache_line_size + 1)) {
+        return false;
+    }
+    
+    aligned_start = (start_offset + cache_line_size - 1) & ~(cache_line_size - 1);
+    aligned_end = end_offset & ~(cache_line_size - 1);
+    
+    // Validate aligned boundaries are within buffer
+    if (aligned_start >= buffer_size || aligned_end > buffer_size) {
+        return false;
+    }
+    
+    // Validate that we have a non-empty working set after alignment
+    if (aligned_end <= aligned_start) {
+        return false;
+    }
+    
+    // Check for potential overflow in working set size calculation
+    if (aligned_end - aligned_start > buffer_size) {
+        return false;
+    }
+    
+    return true;
+}
+
+bool safe_memory_copy(void* dst, size_t dst_size,
+                      const void* src, size_t src_size,
+                      size_t offset, size_t size) {
+    // Validate pointers are not null
+    if (!dst || !src) {
+        return false;
+    }
+    
+    // Check for zero size copy (valid but no-op)
+    if (size == 0) {
+        return true;
+    }
+    
+    // Check for integer overflow in offset + size
+    if (offset > std::numeric_limits<size_t>::max() - size) {
+        return false;
+    }
+    
+    // Validate bounds for source buffer
+    if (offset + size > src_size) {
+        return false;
+    }
+    
+    // Validate bounds for destination buffer
+    if (offset + size > dst_size) {
+        return false;
+    }
+    
+    // Perform the copy
+    std::memcpy(static_cast<uint8_t*>(dst) + offset, 
+                static_cast<const uint8_t*>(src) + offset, 
+                size);
+    
+    return true;
+}
+
+bool safe_memory_set(void* ptr, size_t buffer_size, int value, size_t size) {
+    // Validate pointer is not null
+    if (!ptr) {
+        return false;
+    }
+    
+    // Check for zero size set (valid but no-op)
+    if (size == 0) {
+        return true;
+    }
+    
+    // Validate bounds
+    if (size > buffer_size) {
+        return false;
+    }
+    
+    // Perform the set
+    std::memset(ptr, value, size);
+    
+    return true;
 }
 
 } // namespace MemoryUtils
