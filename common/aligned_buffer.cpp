@@ -1,5 +1,5 @@
 #include "aligned_buffer.h"
-#include <stdexcept>
+#include "errors.h"
 #include <new>
 #include <cstdint>
 
@@ -7,17 +7,17 @@ AlignedBuffer::AlignedBuffer(size_t size, size_t alignment)
     : aligned_ptr_(nullptr), size_(size), alignment_(alignment) {
     
     if (size == 0) {
-        throw std::invalid_argument("Buffer size cannot be zero");
+        throw MemoryError("Buffer size cannot be zero");
     }
     
     if (!is_power_of_two(alignment)) {
-        throw std::invalid_argument("Alignment must be a power of 2");
+        throw MemoryError("Alignment must be a power of 2");
     }
     
     // Allocate extra space to ensure we can achieve alignment
     // Check for overflow before allocation
     if (size > SIZE_MAX - alignment) {
-        throw std::overflow_error("Buffer size would cause overflow");
+        throw MemoryError("Buffer size would cause overflow");
     }
     size_t total_size = size + alignment;
     raw_buffer_ = std::make_unique<uint8_t[]>(total_size);

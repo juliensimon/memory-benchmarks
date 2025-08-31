@@ -22,6 +22,7 @@ This tool provides comprehensive memory performance analysis with various access
 - [Output Format](#output-format)
 - [Multi-Platform Support](#multi-platform-support)
 - [Technical Details](#technical-details)
+- [API Reference](#api-reference)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
 - [Contributing](#contributing)
@@ -351,6 +352,76 @@ This tool provides comprehensive support for both Linux and macOS systems with p
 - Cache line aligned memory access
 - Volatile variables to prevent compiler optimization of read operations
 - Efficient memory access patterns
+
+## API Reference
+
+### Core Classes
+
+#### `PlatformInterface`
+Abstract base class for platform-specific implementations.
+
+**Key Methods:**
+- `detect_cpu_info()` - Detects CPU model and characteristics
+- `detect_memory_info()` - Detects system memory specifications
+- `detect_cache_info()` - Detects cache hierarchy information
+- `get_core_count()` - Returns physical and logical core counts
+
+#### `StandardTests`
+Main test execution engine for memory benchmarks.
+
+**Key Methods:**
+- `run_tests()` - Executes all configured test patterns
+- `run_cache_aware_tests()` - Runs cache-hierarchy-aware benchmarks
+- `set_thread_count()` - Configures threading for tests
+
+#### `SafeFileUtils`
+Secure file reading utilities for system information.
+
+**Key Methods:**
+- `read_single_line()` - Safely reads one line from system files
+- `read_all_lines()` - Safely reads multiple lines with bounds checking
+- `is_safe_path()` - Validates file paths against security threats
+
+#### `AlignedBuffer`
+Cache-line-aligned memory buffer management.
+
+**Key Methods:**
+- `allocate()` - Allocates aligned memory buffers
+- `get_ptr()` - Returns pointer to aligned memory
+- `get_size()` - Returns buffer size in bytes
+
+#### `OutputFormatter`
+Formats test results in multiple output formats.
+
+**Supported Formats:**
+- Markdown (default)
+- JSON
+- CSV
+
+### Platform-Specific Classes
+
+#### Linux: `IntelPlatform`, `ARM64Platform`
+#### macOS: `MacOSPlatform`
+
+Each platform class implements hardware detection and optimization for specific architectures.
+
+### Test Patterns
+
+Available test patterns (defined in `TestPatterns` enum):
+- `SEQUENTIAL_READ` - Sequential memory read operations
+- `SEQUENTIAL_WRITE` - Sequential memory write operations  
+- `RANDOM_READ` - Random access read operations
+- `RANDOM_WRITE` - Random access write operations
+- `COPY` - Memory copy operations (read + write)
+- `TRIAD` - STREAM triad benchmark pattern
+
+### Error Handling
+
+The codebase uses consistent error handling through:
+- Return value checking (boolean success/failure)
+- Exception handling for memory allocation
+- Safe file operations with path validation
+- Bounds checking for all memory operations
 
 ## Troubleshooting
 

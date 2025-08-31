@@ -7,6 +7,9 @@
 *.o
 *.obj
 
+# Compilation database (should be generated)
+compile_commands.json
+
 # Precompiled Headers
 *.gch
 *.pch

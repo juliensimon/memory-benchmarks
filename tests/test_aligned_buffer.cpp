@@ -1,5 +1,6 @@
 #include "test_framework.h"
 #include "../common/aligned_buffer.h"
+#include "../common/errors.h"
 #include <cstring>
 
 void test_aligned_buffer_creation() {
@@ -58,14 +59,14 @@ void test_aligned_buffer_invalid_params() {
     try {
         AlignedBuffer buffer(0, 64);  // Zero size should throw
         ASSERT_TRUE(false);  // Should not reach here
-    } catch (const std::invalid_argument&) {
+    } catch (const MemoryError&) {
         // Expected
     }
     
     try {
         AlignedBuffer buffer(1024, 63);  // Non-power-of-2 alignment should throw
         ASSERT_TRUE(false);  // Should not reach here
-    } catch (const std::invalid_argument&) {
+    } catch (const MemoryError&) {
         // Expected
     }
 }

@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <iostream>
 #include <sys/stat.h>
+#include <limits.h>
+#include <unistd.h>
+#include <cstdlib>
 
 const std::vector<std::string> SafeFileUtils::ALLOWED_SYSTEM_PATHS = {
     "/proc/cpuinfo",
@@ -13,12 +16,41 @@ const std::vector<std::string> SafeFileUtils::ALLOWED_SYSTEM_PATHS = {
 };
 
 bool SafeFileUtils::is_safe_path(const std::string& file_path) {
-    // Check if path is in allowed system paths
+    // Reject empty paths or paths that are too long
+    if (file_path.empty() || file_path.length() > PATH_MAX) {
+        return false;
+    }
+    
+    // Reject paths containing directory traversal sequences
+    if (file_path.find("..") != std::string::npos) {
+        return false;
+    }
+    
+    // Reject paths containing null bytes
+    if (file_path.find('\0') != std::string::npos) {
+        return false;
+    }
+    
+    // Resolve the canonical path to prevent symlink attacks
+    char* resolved_path = realpath(file_path.c_str(), nullptr);
+    if (resolved_path == nullptr) {
+        return false; // Path doesn't exist or can't be resolved
+    }
+    
+    std::string canonical_path(resolved_path);
+    free(resolved_path);
+    
+    // Check if canonical path starts with any allowed system path
     for (const auto& allowed_path : ALLOWED_SYSTEM_PATHS) {
-        if (file_path.find(allowed_path) == 0) {
-            return true;
+        if (canonical_path.find(allowed_path) == 0) {
+            // Ensure it's either an exact match or the next character is '/'
+            if (canonical_path.length() == allowed_path.length() || 
+                canonical_path[allowed_path.length()] == '/') {
+                return true;
+            }
         }
     }
+    
     return false;
 }
 

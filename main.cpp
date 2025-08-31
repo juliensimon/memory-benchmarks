@@ -86,6 +86,13 @@ public:
         cleanup_buffers();
     }
 
+    /**
+     * @brief Allocate cache-aligned memory buffers for testing
+     * 
+     * @param total_size Total memory to allocate across all buffers
+     * @param num_buffers Number of separate buffers to create
+     * @return true if allocation succeeded, throws MemoryError on failure
+     */
     bool allocate_buffers(size_t total_size, size_t num_buffers) {
         if(total_size == 0 || num_buffers == 0) {
             throw MemoryError("Invalid buffer allocation parameters: total_size=" + 
@@ -127,12 +134,26 @@ public:
         return true;
     }
 
+    /**
+     * @brief Clean up allocated memory buffers
+     * 
+     * Uses RAII pattern - AlignedBuffer destructors automatically handle cleanup
+     */
     void cleanup_buffers() {
         // RAII: AlignedBuffer destructors automatically handle memory cleanup
         buffers.clear();
         aligned_buffers.clear();
     }
 
+    /**
+     * @brief Execute a memory bandwidth test with specified parameters
+     * 
+     * @param pattern Test pattern to execute (sequential read/write, random, copy, triad)
+     * @param iterations Number of test iterations to run
+     * @param num_threads Number of threads to use for the test
+     * @param cache_aware Whether to run cache-hierarchy-aware variant
+     * @return PerformanceStats containing bandwidth, latency, and timing results
+     */
     PerformanceStats run_test(TestPattern pattern, size_t iterations, size_t num_threads, bool cache_aware = false) {
         if(aligned_buffers.empty()) return {0.0, 0.0, 0, 0.0};
 

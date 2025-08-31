@@ -1,6 +1,6 @@
 #include "platform_interface.h"
+#include "errors.h"
 #include <memory>
-#include <stdexcept>
 
 // Platform-specific includes
 #ifdef __APPLE__
@@ -23,10 +23,10 @@ std::unique_ptr<PlatformInterface> create_platform_interface() {
     return std::make_unique<ARM64Platform>();
     #else
     // Unsupported Linux architecture
-    throw std::runtime_error("Unsupported Linux architecture. Only x86_64 and aarch64 are supported.");
+    throw PlatformError("Unsupported Linux architecture. Only x86_64 and aarch64 are supported.");
     #endif
 #else
     // Unsupported operating system
-    throw std::runtime_error("Unsupported operating system. Only macOS and Linux are supported.");
+    throw PlatformError("Unsupported operating system. Only macOS and Linux are supported.");
 #endif
 }

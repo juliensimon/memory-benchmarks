@@ -61,6 +61,12 @@ public:
     /**
      * @brief Validate that a file path is safe to read
      * 
+     * Performs comprehensive security checks including:
+     * - Directory traversal prevention (..)
+     * - Null byte injection prevention
+     * - Canonical path resolution to prevent symlink attacks
+     * - Whitelist validation against allowed system paths
+     * 
      * @param file_path Path to validate
      * @return true if path is safe, false otherwise
      */
