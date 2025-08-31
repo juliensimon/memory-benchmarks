@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -212,7 +213,23 @@ public:
                         break;
                     case TestPattern::MATRIX_MULTIPLY: {
                         // Matrix multiplication uses different parameters
-                        size_t matrix_size = 1024;  // Default matrix size
+                        size_t matrix_size;
+                        if (cache_aware && buffer_size > 0) {
+                            // In cache-aware mode, calculate matrix size based on working set
+                            // Each matrix needs M*K + K*N + M*N elements (3 matrices total)
+                            // Assuming square matrices (M=K=N), that's 3*N^2 elements
+                            // Working set is divided among threads, and we want 3 matrices to fit
+                            size_t bytes_per_matrix_set = buffer_size / num_threads;
+                            size_t elements_per_matrix_set = bytes_per_matrix_set / sizeof(float);
+                            matrix_size = static_cast<size_t>(std::sqrt(elements_per_matrix_set / 3.0));
+                            // Ensure minimum matrix size for meaningful computation
+                            matrix_size = std::max(matrix_size, static_cast<size_t>(8));
+                            // Cap at reasonable size to prevent excessive computation for small caches
+                            matrix_size = std::min(matrix_size, static_cast<size_t>(512));
+                        } else {
+                            matrix_size = 1024;  // Default matrix size for non-cache-aware mode
+                        }
+                        
                         MatrixMultiply::MatrixConfig matrix_config = 
                             MatrixMultiply::create_matrix_config(matrix_size, iterations, false);
                         
@@ -258,7 +275,12 @@ public:
             }
 
             size_t scaled_iterations;
-            scaled_iterations = MemoryUtils::scale_iterations(iterations, working_set_size);
+            if (pattern == TestPattern::MATRIX_MULTIPLY) {
+                // Matrix multiplication is computationally intensive, so use fewer iterations
+                scaled_iterations = std::max(static_cast<size_t>(1), iterations / 10);
+            } else {
+                scaled_iterations = MemoryUtils::scale_iterations(iterations, working_set_size);
+            }
 
             PerformanceStats stats = run_test(pattern, scaled_iterations, num_threads, true);
 
